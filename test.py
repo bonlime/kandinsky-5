@@ -4,6 +4,7 @@ import warnings
 import logging
 
 import torch
+import gc
 
 from kandinsky.utils import set_hf_token
 from kandinsky import get_video_pipeline, get_image_pipeline, get_distributed_pipeline
@@ -162,6 +163,12 @@ def parse_args():
         default=None,
         help="GPUs num for tensor parallel",
     )
+    parser.add_argument(
+        "--fp8",
+        action='store_true',
+        default=False,
+        help="Use fp8 quant weights"
+    )
     args = parser.parse_args()
 
     if args.hf_token:
@@ -225,6 +232,12 @@ if __name__ == "__main__":
         )
         pipe = get_distributed_pipeline(pipe, args.tp_size, mode=mode)
 
+    if args.fp8:
+        for name, module in pipe.dit.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                if "time_embeddings" not in name and "modulation" not in name:
+                    module.weight.data = module.weight.data.to(torch.float8_e4m3fn)
+
     if args.output_filename is None:
         args.output_filename = "./" + args.prompt.replace(" ", "_")
         if len(args.output_filename) > 32:
@@ -235,7 +248,6 @@ if __name__ == "__main__":
             args.output_filename = args.output_filename + ".mp4"
 
     start_time = time.perf_counter()
-
     if "t2i" in args.config:
         x = pipe(args.prompt,
                  width=args.width,
@@ -277,4 +289,48 @@ if __name__ == "__main__":
                  save_path=args.output_filename,
                  seed=args.seed)
     print(f"TIME ELAPSED: {time.perf_counter() - start_time}")
+    print(f"Peak memory allocated: {torch.cuda.max_memory_allocated() / (1024**3):.2f} GB")
     print(f"Generated file is saved to {args.output_filename}")
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    start_time = time.perf_counter()
+    if "t2i" in args.config:
+        x = pipe(args.prompt,
+                 width=args.width,
+                 height=args.height,
+                 num_steps=args.sample_steps,
+                 guidance_weight=args.guidance_weight,
+                 scheduler_scale=args.scheduler_scale,
+                 expand_prompts=args.expand_prompt,
+                 seed=args.seed)
+    elif "i2i" in args.config:
+        x = pipe(args.prompt,
+                 image=args.image,
+                 num_steps=args.sample_steps,
+                 guidance_weight=args.guidance_weight,
+                 scheduler_scale=args.scheduler_scale,
+                 expand_prompts=args.expand_prompt,
+                 seed=args.seed)
+    elif "i2v" in args.config:
+        x = pipe(args.prompt,
+                 image=args.image,
+                 time_length=args.video_duration,
+                 num_steps=args.sample_steps,
+                 guidance_weight=args.guidance_weight,
+                 scheduler_scale=args.scheduler_scale,
+                 expand_prompts=args.expand_prompt,
+                 seed=args.seed)
+    else:
+        x = pipe(args.prompt,
+                 time_length=args.video_duration,
+                 width=args.width,
+                 height=args.height,
+                 num_steps=args.sample_steps,
+                 guidance_weight=args.guidance_weight,
+                 scheduler_scale=args.scheduler_scale,
+                 expand_prompts=args.expand_prompt,
+                 seed=args.seed)
+    print(f"TIME ELAPSED: {time.perf_counter() - start_time}")
+    print(f"Peak memory allocated: {torch.cuda.max_memory_allocated() / (1024**3):.2f} GB")

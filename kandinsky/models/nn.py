@@ -155,6 +155,7 @@ class MultiheadSelfAttentionEnc(nn.Module):
         super().__init__()
         assert num_channels % head_dim == 0
         self.num_heads = num_channels // head_dim
+        self.num_chunks = 2
 
         self.to_query = nn.Linear(num_channels, num_channels, bias=True)
         self.to_key = nn.Linear(num_channels, num_channels, bias=True)
@@ -169,24 +170,10 @@ class MultiheadSelfAttentionEnc(nn.Module):
             self.attn_engine = SelfAttentionEngine(attention_engine)
 
     @torch.compile()
-    def get_qkv(self, x):
-        query = self.to_query(x)
-        key = self.to_key(x)
-        value = self.to_value(x)
-
-        shape = query.shape[:-1]
-        query = query.reshape(*shape, self.num_heads, -1)
-        key = key.reshape(*shape, self.num_heads, -1)
-        value = value.reshape(*shape, self.num_heads, -1)
-
-        return query, key, value
-
-    @torch.compile()
-    def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
-        return q, k
-
+    def compute_qk(self, x, rope, proj_fn, norm_fn, shape):
+        result = proj_fn(x).view(*shape, self.num_heads, -1)
+        return apply_rotary(norm_fn(result.float()).type_as(result), rope)
+    
     @torch.compile()
     def scaled_dot_product_attention(self, query, key, value, attention_mask=None):
         args = {"q": query, "k": key, "v": value}
@@ -194,26 +181,53 @@ class MultiheadSelfAttentionEnc(nn.Module):
             args["attn_mask"] = attention_mask
         out = self.attn_engine.get_attention()(**args)[0].flatten(-2, -1)
         return out
-
+    
     @torch.compile()
     def out_l(self, x):
         return self.out_layer(x)
+    
+    def _forward(self, x, rope, attention_mask):
+        shape = x.shape[:-1]
+        q = self.compute_qk(x, rope, self.to_query, self.query_norm, shape)
+        k = self.compute_qk(x, rope, self.to_key, self.key_norm, shape)
+        v = self.to_value(x).view(*shape, self.num_heads, -1)
+        out = self.scaled_dot_product_attention(q, k, v, attention_mask)
+        return self.out_l(out)
+    
+    def _forward_chunked(self, x, rope, attention_mask):
+        def process_chunks(proj_fn, norm_fn):
+            _, L, _ = x.shape
+            chunk_size = (L + self.num_chunks - 1) // self.num_chunks
+            chunks = []
+            print(f'MultiheadSelfAttentionEnc: L: {L}, chunk_size: {chunk_size}')
+            for i in range(0, L, chunk_size):
+                end_idx = min(i + chunk_size, L)
+                x_chunk = x[:, i:end_idx]
+                rope_chunk = rope[:, i:end_idx]
+                chunks.append(self.compute_qk(
+                    x_chunk, rope_chunk, proj_fn, norm_fn, x_chunk.shape[:-1]))
+            return torch.cat(chunks, dim=1)
 
+        q = process_chunks(self.to_query, self.query_norm)
+        k = process_chunks(self.to_key, self.key_norm)
+        v = self.to_value(x).view(*x.shape[:-1], self.num_heads, -1)
+        out = self.scaled_dot_product_attention(q, k, v, attention_mask)
+        return self.out_l(out)
+    
     def forward(self, x, rope, attention_mask=None):
-        query, key, value = self.get_qkv(x)
-        query, key = self.norm_qk(query, key)
-        query = apply_rotary(query, rope).type_as(query)
-        key = apply_rotary(key, rope).type_as(key)
+        if x.shape[1] > 8192:
+            return self._forward_chunked(x, rope, attention_mask)
+        else:
+            return self._forward(x, rope, attention_mask)
+        #return self._forward(x, rope, attention_mask)
 
-        out = self.scaled_dot_product_attention(query, key, value, attention_mask)
-        out = self.out_l(out)
-        return out
 
 class MultiheadSelfAttentionDec(nn.Module):
     def __init__(self, num_channels, head_dim, attention_engine="auto"):
         super().__init__()
         assert num_channels % head_dim == 0
         self.num_heads = num_channels // head_dim
+        self.num_chunks = 2
 
         self.to_query = nn.Linear(num_channels, num_channels, bias=True)
         self.to_key = nn.Linear(num_channels, num_channels, bias=True)
@@ -226,22 +240,9 @@ class MultiheadSelfAttentionDec(nn.Module):
         self.attn_engine = SelfAttentionEngine(attention_engine)
 
     @torch.compile()
-    def get_qkv(self, x):
-        query = self.to_query(x)
-        key = self.to_key(x)
-        value = self.to_value(x)
-
-        shape = query.shape[:-1]
-        query = query.reshape(*shape, self.num_heads, -1)
-        key = key.reshape(*shape, self.num_heads, -1)
-        value = value.reshape(*shape, self.num_heads, -1)
-        return query, key, value
-
-    @torch.compile()
-    def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
-        return q, k
+    def compute_qk(self, x, rope, proj_fn, norm_fn, shape):
+        result = proj_fn(x).view(*shape, self.num_heads, -1)
+        return apply_rotary(norm_fn(result.float()).type_as(result), rope)
 
     @torch.compile()
     def attention(self, query, key, value):
@@ -278,21 +279,49 @@ class MultiheadSelfAttentionDec(nn.Module):
     @torch.compile()
     def out_l(self, x):
         return self.out_layer(x)
-
-    def forward(self, x, rope, sparse_params=None):
-        query, key, value = self.get_qkv(x)
-        query, key = self.norm_qk(query, key)
-
-        query = apply_rotary(query, rope).type_as(query)
-        key = apply_rotary(key, rope).type_as(key)
+    
+    def _forward(self, x, rope, sparse_params):
+        shape = x.shape[:-1]
+        q = self.compute_qk(x, rope, self.to_query, self.query_norm, shape)
+        k = self.compute_qk(x, rope, self.to_key, self.key_norm, shape)
+        v = self.to_value(x).view(*shape, self.num_heads, -1)
 
         if sparse_params is not None:
-            out = self.nabla(query, key, value, sparse_params=sparse_params)
+            out = self.nabla(q, k, v, sparse_params=sparse_params)
         else:
-            out = self.attention(query, key, value)
+            out = self.attention(q, k, v)
+        return self.out_l(out)
 
-        out = self.out_l(out)
-        return out
+    def _forward_chunked(self, x, rope, sparse_params):
+        def process_chunks(proj_fn, norm_fn):
+            _, L, _ = x.shape
+            chunk_size = (L + self.num_chunks - 1) // self.num_chunks
+            chunks = []
+            print(f'MultiheadSelfAttentionDec: L: {L}, chunk_size: {chunk_size}')
+            for i in range(0, L, chunk_size):
+                end_idx = min(i + chunk_size, L)
+                x_chunk = x[:, i:end_idx]
+                rope_chunk = rope[i:end_idx]
+                chunks.append(self.compute_qk(
+                    x_chunk, rope_chunk, proj_fn, norm_fn, x_chunk.shape[:-1]))
+            return torch.cat(chunks, dim=1)
+
+        q = process_chunks(self.to_query, self.query_norm)
+        k = process_chunks(self.to_key, self.key_norm)
+        v = self.to_value(x).view(*x.shape[:-1], self.num_heads, -1)
+
+        if sparse_params is not None:
+            out = self.nabla(q, k, v, sparse_params=sparse_params)
+        else:
+            out = self.attention(q, k, v)
+        return self.out_l(out)
+    
+    def forward(self, x, rope, sparse_params=None):
+        if x.shape[1] > 8192:
+            return self._forward_chunked(x, rope, sparse_params)
+        else:
+            return self._forward(x, rope, sparse_params)
+        #return self._forward(x, rope, sparse_params)
 
 
 class MultiheadCrossAttention(nn.Module):
@@ -360,10 +389,34 @@ class FeedForward(nn.Module):
         self.in_layer = nn.Linear(dim, ff_dim, bias=False)
         self.activation = nn.GELU()
         self.out_layer = nn.Linear(ff_dim, dim, bias=False)
+        self.num_chunks = 4
 
     @torch.compile()
-    def forward(self, x):
+    def _forward(self, x):
         return self.out_layer(self.activation(self.in_layer(x)))
+
+    @torch.compile()
+    def _forward_chunked(self, x):
+        B, L, _ = x.shape
+        chunk_size = (L + self.num_chunks - 1) // self.num_chunks
+        output = torch.empty(B, L, self.out_layer.out_features, dtype=x.dtype, device=x.device)
+        print(f'FeedForward: L: {L}, chunk_size: {chunk_size}')
+        for i in range(0, L, chunk_size):
+            end_idx = min(i + chunk_size, L)
+            def compute_chunk(x_chunk):
+                activated = self.activation(self.in_layer(x_chunk))
+                return self.out_layer(activated)
+            output[:, i:end_idx] = compute_chunk(x[:, i:end_idx])
+
+            output[:, i:end_idx] = self._forward(x[:, i:end_idx])
+        return output
+
+    def forward(self, x):
+        if x.shape[1] > 8192:
+            return self._forward_chunked(x)
+        else:
+            return self._forward(x)
+        #return self._forward(x)
 
 
 class OutLayer(nn.Module):
