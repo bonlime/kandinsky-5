@@ -6,6 +6,9 @@ resolution-markers = [
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
+required-markers = [
+    "sys_platform == 'linux'",
+]
 
 [options]
 prerelease-mode = "allow"
@@ -639,6 +642,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pytest" },
     { name = "requests" },
+    { name = "sageattention" },
     { name = "sentencepiece" },
     { name = "torch" },
     { name = "torchvision" },
@@ -671,6 +675,7 @@ requires-dist = [
     { name = "pydantic" },
     { name = "pytest" },
     { name = "requests" },
+    { name = "sageattention", git = "https://github.com/thu-ml/SageAttention.git" },
     { name = "sentencepiece" },
     { name = "torch", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/nightly/cu130" },
     { name = "torchvision", index = "https://download.pytorch.org/whl/nightly/cu130" },
@@ -1336,6 +1341,11 @@ wheels = [
     { url = "https://download.pytorch.org/whl/nightly/safetensors-0.6.2-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl" },
     { url = "https://download.pytorch.org/whl/nightly/safetensors-0.6.2-cp38-abi3-win_amd64.whl" },
 ]
+
+[[package]]
+name = "sageattention"
+version = "2.2.0"
+source = { git = "https://github.com/thu-ml/SageAttention.git#5a6f53c77975abc039bf3ec5cb4c789b44f90771" }
 
 [[package]]
 name = "sentencepiece"
