@@ -7,6 +7,7 @@ from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 from huggingface_hub import snapshot_download
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
+from accelerate import init_empty_weights
 
 from .models.dit import get_dit, TransformerDecoderBlock
 from .models.text_embedders import get_text_embedder
@@ -35,7 +36,7 @@ def set_hf_token(hf_token):
     global HF_TOKEN
     HF_TOKEN = hf_token
 
-
+@torch.inference_mode()
 def get_video_pipeline(
     device_map: Union[str, torch.device, dict],
     cache_dir: str = "./weights/",
@@ -115,18 +116,14 @@ def get_video_pipeline(
 
     conf.model.dit_params.attention_engine = attention_engine
     conf.model.text_embedder.qwen.mode = mode
-    text_embedder = get_text_embedder(conf.model.text_embedder, device='cpu',
+    te_device = "cpu" if offload else device_map["text_embedder"]
+    text_embedder = get_text_embedder(conf.model.text_embedder, device=te_device,
         quantized_qwen=quantized_qwen, text_token_padding=text_token_padding)
-    
-    if not offload: 
-        text_embedder = text_embedder.to(device=device_map["text_embedder"]) 
+    vae_device = "cpu" if offload else device_map["vae"]
+    vae = build_vae(conf.model.vae, device=vae_device)
 
-    vae = build_vae(conf.model.vae)
-    vae = vae.eval()
-    if not offload:
-        vae = vae.to(device=device_map["vae"]) 
-
-    dit = get_dit(conf.model.dit_params, text_token_padding=text_token_padding)
+    with init_empty_weights():
+        dit = get_dit(conf.model.dit_params, text_token_padding=text_token_padding)
 
     if magcache:
         mag_ratios = conf.magcache.mag_ratios
@@ -136,11 +133,11 @@ def get_video_pipeline(
             no_cfg = True
         set_magcache_params(dit, mag_ratios, num_steps, no_cfg)
 
-    state_dict = load_file(conf.model.checkpoint_path, device='cpu')
+    dit_device = "cpu" if offload else device_map["dit"]
+    state_dict = load_file(conf.model.checkpoint_path, device=dit_device)
     dit.load_state_dict(state_dict, assign=True)
-
-    if not offload and world_size == 1:
-        dit = dit.to(device_map["dit"])
+    # need this extra cast to move buffers as well
+    dit = dit.to(dit_device)
 
     if mode == 't2v':
         return Kandinsky5T2VPipeline(

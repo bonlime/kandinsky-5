@@ -5,7 +5,9 @@ metrics:
   - 2.0
   resolution: 512
 model:
-  checkpoint_path: "./weights/model/kandinsky5pro_t2v_sft_5s.safetensors"
+  # checkpoint_path: "./weights/model/kandinsky5pro_t2v_sft_5s.safetensors"
+  # distilled model
+  checkpoint_path: "/root/.cache/huggingface/hub/models--kandinskylab--Kandinsky-5.0-T2V-Pro-distilled-5s-Diffusers/snapshots/30b04a28d57692f1c945f3652404e3419fb00d57/transformer/diffusion_pytorch_model.safetensors"
   num_steps: 50
   guidance_weight: 5.0
   dit_params:
@@ -28,12 +30,21 @@ model:
     - 48
     visual_cond: true
   attention:
-    type: flash
+    # type: flash
     chunk: false
     causal: false
     local: false
     glob: false
     window: 3
+    # for test
+    type: nabla
+    method: topcdf
+    P: 0.7
+    add_sta: true
+    wT: 11
+    wW: 3
+    wH: 3
+
   vae:
     checkpoint_path: "./weights/vae/"
     name: hunyuan

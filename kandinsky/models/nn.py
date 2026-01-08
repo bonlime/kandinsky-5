@@ -144,7 +144,7 @@ class Modulation(nn.Module):
         self.out_layer.weight.data.zero_()
         self.out_layer.bias.data.zero_()
 
-    @torch.compile()
+    # @torch.compile()
     @torch.autocast(device_type="cuda", dtype=torch.float32)
     def forward(self, x):
         return self.out_layer(self.activation(x))
@@ -181,10 +181,14 @@ class MultiheadSelfAttentionEnc(nn.Module):
 
         return query, key, value
 
-    @torch.compile()
+    # @torch.compile()
+    # @torch.autocast(device_type="cuda", dtype=torch.float32)
     def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
+        with torch.autocast(device_type="cuda", dtype=torch.float32):
+        # q = self.query_norm(q.float()).type_as(q)
+        # k = self.key_norm(k.float()).type_as(k)
+            q = self.query_norm(q)
+            k = self.key_norm(k)
         return q, k
 
     @torch.compile()
@@ -237,10 +241,13 @@ class MultiheadSelfAttentionDec(nn.Module):
         value = value.reshape(*shape, self.num_heads, -1)
         return query, key, value
 
-    @torch.compile()
+    # @torch.compile()
     def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
+        # q = self.query_norm(q.float()).type_as(q)
+        # k = self.key_norm(k.float()).type_as(k)
+        with torch.autocast(device_type="cuda", dtype=torch.float32):
+            q = self.query_norm(q)
+            k = self.key_norm(k)
         return q, k
 
     @torch.compile()
@@ -267,7 +274,8 @@ class MultiheadSelfAttentionDec(nn.Module):
                 query,
                 key,
                 value,
-                block_mask=block_mask
+                block_mask=block_mask,
+                kernel_options={"BLOCK_M": 64, "BLOCK_N": 64}
             )
             .transpose(1, 2)
             .contiguous()
@@ -329,8 +337,11 @@ class MultiheadCrossAttention(nn.Module):
 
     @torch.compile()
     def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
+        with torch.autocast(device_type="cuda", dtype=torch.float32):
+        # q = self.query_norm(q.float()).type_as(q)
+        # k = self.key_norm(k.float()).type_as(k)
+            q = self.query_norm(q)
+            k = self.key_norm(k)
         return q, k
 
     @torch.compile()

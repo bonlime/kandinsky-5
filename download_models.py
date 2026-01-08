@@ -3,23 +3,23 @@ import argparse
 from huggingface_hub import snapshot_download
 
 MODELS_0 = [
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-10s',
-    'kandinskylab/Kandinsky-5.0-I2V-Lite-5s',
-    'kandinskylab/Kandinsky-5.0-T2I-Lite',
-    'kandinskylab/Kandinsky-5.0-I2I-Lite',
-    'kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s',
-    'kandinskylab/Kandinsky-5.0-T2V-Pro-sft-10s',
-    'kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-10s',
+    # 'kandinskylab/Kandinsky-5.0-I2V-Lite-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2I-Lite',
+    # 'kandinskylab/Kandinsky-5.0-I2I-Lite',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Pro-sft-10s',
+    # 'kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s',
 ]
 
 MODELS_1 = [
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-5s',
-    'kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-10s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-5s',
+    # 'kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-10s',
 ]
 
 MODELS = MODELS_0 + MODELS_1
@@ -50,6 +50,7 @@ if __name__ == "__main__":
         if '-I2I-' in model or '-T2I-' in model:
             flux_vae_download_flag = True
 
+    hunyuan_vae_download_flag = True
     if hunyuan_vae_download_flag:
         vae_path = snapshot_download(
             repo_id="hunyuanvideo-community/HunyuanVideo",

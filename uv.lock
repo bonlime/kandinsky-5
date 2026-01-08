@@ -326,6 +326,15 @@ wheels = [
 ]
 
 [[package]]
+name = "flash-attn"
+version = "2.8.3"
+source = { git = "https://github.com/Dao-AILab/flash-attention.git#3e87e421f898c6919fa417d00e5afcec5909debe" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.7.0"
 source = { registry = "https://download.pytorch.org/whl/nightly/cu130" }
@@ -628,6 +637,7 @@ dependencies = [
     { name = "bitsandbytes" },
     { name = "diffusers" },
     { name = "einops" },
+    { name = "flash-attn" },
     { name = "imageio" },
     { name = "imageio-ffmpeg" },
     { name = "ipykernel" },
@@ -661,6 +671,7 @@ requires-dist = [
     { name = "bitsandbytes" },
     { name = "diffusers" },
     { name = "einops" },
+    { name = "flash-attn", git = "https://github.com/Dao-AILab/flash-attention.git" },
     { name = "imageio" },
     { name = "imageio-ffmpeg" },
     { name = "ipykernel" },

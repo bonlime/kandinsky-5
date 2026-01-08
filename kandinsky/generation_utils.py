@@ -148,6 +148,7 @@ def generate(
     sparse_params = get_sparse_params(conf, {"visual": img}, device)
     timesteps = torch.linspace(1, 0, num_steps + 1, device=device)
     timesteps = scheduler_scale * timesteps / (1 + (scheduler_scale - 1) * timesteps)
+    print(f'Timesteps: {timesteps}')
 
     if tp_mesh and first_frames is None: # do not split on gpus for i2v
         tp_rank = tp_mesh["tensor_parallel"].get_local_rank()

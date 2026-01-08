@@ -1212,14 +1212,14 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         return self.get_enc_optimal_tiling(enc_inp_shape)
 
 
-def build_vae(conf):
+def build_vae(conf, device="cpu"):
     if conf.name == "hunyuan":
         return AutoencoderKLHunyuanVideo.from_pretrained(
-            conf.checkpoint_path, subfolder="vae", torch_dtype=torch.float16
+            conf.checkpoint_path, subfolder="vae", torch_dtype=torch.float16, device_map=device
         )
     elif conf.name == "flux":
         from diffusers.models import AutoencoderKL
-        vae = AutoencoderKL.from_pretrained(conf.checkpoint_path, subfolder="flux/vae", torch_dtype=torch.bfloat16)
+        vae = AutoencoderKL.from_pretrained(conf.checkpoint_path, subfolder="flux/vae", torch_dtype=torch.bfloat16, device_map=device)
         return vae
     else:
         assert False, f"unknown vae name {conf.name}"
